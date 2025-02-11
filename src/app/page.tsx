@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import io from "socket.io-client";
 import { useJsApiLoader } from "@react-google-maps/api";
-import { DndContext, closestCenter } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { MapProvider } from "@/providers/MapProvider";
 import { Map } from "@/components/Map";
 import { SearchBox } from "@/components/SearchBox";
 import { RoutePlanner } from "@/components/RoutePlanner";
-import SortableItem from "@/components/SortableItem";
+
+const socket = io("http://localhost:4000");
 
 export default function Home() {
     const { isLoaded } = useJsApiLoader({
@@ -16,137 +16,101 @@ export default function Home() {
         libraries: ["places", "marker"],
     });
 
-    const [origin, setOrigin] = useState<google.maps.LatLngLiteral | null>(null);
-    const [originAddress, setOriginAddress] = useState<string>("Localisation en cours...");
+    interface User {
+        id: string;
+        name: string;
+        location: google.maps.LatLngLiteral;
+        color: string;
+    }
+
+    // ✅ Ajout des variables manquantes
+    const [name, setName] = useState("");
+    const [users, setUsers] = useState<User[]>([]);
+    const [selectedUser, setSelectedUser] = useState<string | null>(null);
+    const [origin, setOrigin] = useState<google.maps.LatLngLiteral | null>(null); // 🔹 Ajout
+    const [destination, setDestination] = useState<google.maps.LatLngLiteral | null>(null); // 🔹 Ajout
+    const [map, setMap] = useState<google.maps.Map | null>(null); // 🔹 Ajout
     const [steps, setSteps] = useState<{ id: string; location: google.maps.LatLngLiteral; name: string }[]>([]);
-    const [showRoute, setShowRoute] = useState(false);
-    const [mapKey, setMapKey] = useState<string>(crypto.randomUUID());
-    const [map, setMap] = useState<google.maps.Map | null>(null);
-    const [travelTime, setTravelTime] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isLoaded || !window.google) return;
 
-        navigator.geolocation.getCurrentPosition((position) => {
-            const userLocation = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-            };
-            setOrigin(userLocation);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const userLocation: google.maps.LatLngLiteral = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                };
+                setOrigin(userLocation);
+            },
+            (error) => console.error("Erreur de géolocalisation :", error),
+            { enableHighAccuracy: true }
+        );
 
-            // 🔹 Vérifier si Geocoder est disponible avant de l'utiliser
-            if (google.maps.Geocoder) {
-                const geocoder = new google.maps.Geocoder();
-                geocoder.geocode({ location: userLocation }, (results, status) => {
-                    if (status === "OK" && results && results.length > 0) {
-                        setOriginAddress(results[0].formatted_address);
-                    } else {
-                        setOriginAddress("Adresse inconnue");
-                    }
-                });
-            } else {
-                setOriginAddress("Impossible de récupérer l'adresse.");
-            }
+        socket.on("updateUsers", (usersList) => {
+            setUsers(usersList);
         });
+
+        return () => {
+            socket.disconnect();
+        };
     }, [isLoaded]);
 
-    // 🔹 Ajouter une nouvelle adresse lorsqu'on appuie sur Entrée
-    const addStep = (location: google.maps.LatLngLiteral, name: string) => {
-        setSteps((prevSteps) => [...prevSteps, { id: crypto.randomUUID(), location, name }]);
-        setShowRoute(false);
-        reloadMap();
+    const handleJoin = () => {
+        if (name && origin) {
+            socket.emit("join", name, origin);
+        }
     };
-
-    // 🔹 Supprimer une étape
-    const removeStep = (id: string) => {
-        setSteps((prevSteps) => prevSteps.filter((step) => step.id !== id));
-        setShowRoute(false);
-        reloadMap();
-    };
-
-    // 🔹 Réorganiser les étapes
-    const onDragEnd = (event: any) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-
-        const oldIndex = steps.findIndex((step) => step.id === active.id);
-        const newIndex = steps.findIndex((step) => step.id === over.id);
-
-        setSteps((prevSteps) => arrayMove(prevSteps, oldIndex, newIndex));
-        setShowRoute(false);
-        reloadMap();
-    };
-
-    // 🔹 Réinitialiser tout
-    const resetRoute = () => {
-        setSteps([]);
-        setShowRoute(false);
-        setTravelTime(null);
-        reloadMap();
-    };
-
-    // 🔹 Recharger la carte
-    const reloadMap = () => {
-        setMapKey(crypto.randomUUID());
-    };
-
-    if (!isLoaded) {
-        return <p>Chargement de Google Maps...</p>; // 🔹 Empêcher l'affichage si l'API n'est pas prête
-    }
 
     return (
         <MapProvider>
             <div className="flex flex-col items-center gap-4 p-4">
-                <p className="font-bold">
-                    Départ : {originAddress}
-                </p>
-
-                {/* 🔹 Input pour ajouter une adresse */}
-                <SearchBox onSelect={(location, name) => addStep(location, name)} />
-
-                {/* 🔹 Liste des étapes avec Drag & Drop */}
-                <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-                    <SortableContext items={steps.map((step) => step.id)} strategy={verticalListSortingStrategy}>
-                        <ul className="w-full p-4 rounded-lg">
-                            {steps.map((step) => (
-                                <SortableItem key={step.id} id={step.id} name={step.name} onRemove={() => removeStep(step.id)} />
+                {!name ? (
+                    <>
+                        <p>Entrez votre nom :</p>
+                        <input
+                            type="text"
+                            placeholder="Votre nom"
+                            onChange={(e) => setName(e.target.value)}
+                            className="border p-2 rounded"
+                        />
+                        <button className="bg-blue-500 text-white p-2 rounded" onClick={handleJoin}>
+                            Rejoindre la carte
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <p className="font-bold">Bienvenue, {name} !</p>
+                        <p>Utilisateurs connectés :</p>
+                        <select onChange={(e) => setSelectedUser(e.target.value)} className="border p-2 rounded">
+                            <option value="">Sélectionnez un utilisateur</option>
+                            {users.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name} ({user.location.lat.toFixed(4)}, {user.location.lng.toFixed(4)})
+                                </option>
                             ))}
-                        </ul>
-                    </SortableContext>
-                </DndContext>
+                        </select>
 
-                <div className="flex gap-4">
-                    <button
-                        className="p-2 bg-blue-500 text-white rounded"
-                        onClick={() => setShowRoute(true)}
-                        disabled={steps.length < 1} // 🔹 Activation dès qu'il y a une destination
-                    >
-                        Afficher l'itinéraire
-                    </button>
+                        <SearchBox onSelect={(location) => setDestination(location)} />
 
-                    <button className="p-2 bg-red-500 text-white rounded" onClick={resetRoute}>
-                        Réinitialiser
-                    </button>
-                </div>
+                        <Map
+                            users={users}
+                            origin={origin}
+                            destination={destination}
+                            waypoints={steps.map((step) => ({ location: step.location, stopover: true }))}
+                            onMapLoad={setMap}
+                        />
 
-                {travelTime && <p className="text-lg font-semibold mt-2">Temps estimé : {travelTime}</p>}
-
-                <Map
-                    key={mapKey}
-                    origin={origin}
-                    destination={steps.length > 0 ? steps[steps.length - 1].location : null}
-                    waypoints={steps.slice(0, -1).map((s) => ({ location: s.location, stopover: true }))}
-                    onMapLoad={setMap}
-                />
-
-                {showRoute && steps.length > 0 && (
-                    <RoutePlanner
-                        origin={origin}
-                        destination={steps[steps.length - 1].location}
-                        waypoints={steps.slice(0, -1).map((s) => ({ location: s.location, stopover: true }))}
-                        map={map}
-                        onDurationUpdate={setTravelTime}
-                    />
+                        {destination && (
+                            <RoutePlanner
+                                origin={origin}
+                                destination={destination}
+                                waypoints={steps.map((step) => ({ location: step.location, stopover: true }))}
+                                map={map}
+                                onDurationUpdate={() => {}}
+                            />
+                        )}
+                    </>
                 )}
             </div>
         </MapProvider>
