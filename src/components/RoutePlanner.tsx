@@ -15,11 +15,13 @@ const RoutePlanner = ({ origin, destination, waypoints, map, onDurationUpdate }:
     const [renderer, setRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
 
     useEffect(() => {
-        if (!origin || !destination || !map) return;
-
-        if (renderer) {
-            renderer.setMap(null);
+        if (!origin || !destination || !map) {
+            setDirections(null); // 🔹 Supprime le tracé lorsqu'on reset
+            if (renderer) renderer.setMap(null);
+            return;
         }
+
+        if (renderer) renderer.setMap(null);
 
         const directionsService = new google.maps.DirectionsService();
         const newRenderer = new google.maps.DirectionsRenderer();
@@ -48,9 +50,7 @@ const RoutePlanner = ({ origin, destination, waypoints, map, onDurationUpdate }:
         );
 
         return () => {
-            if (renderer) {
-                renderer.setMap(null);
-            }
+            if (renderer) renderer.setMap(null);
         };
     }, [origin, destination, waypoints, map]);
 

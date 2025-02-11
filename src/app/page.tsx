@@ -1,22 +1,32 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useJsApiLoader } from "@react-google-maps/api";
+import { DndContext, closestCenter } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { MapProvider } from "@/providers/MapProvider";
 import { Map } from "@/components/Map";
 import { SearchBox } from "@/components/SearchBox";
 import { RoutePlanner } from "@/components/RoutePlanner";
+import SortableItem from "@/components/SortableItem";
 
 export default function Home() {
+    const { isLoaded } = useJsApiLoader({
+        googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string,
+        libraries: ["places", "marker"],
+    });
+
     const [origin, setOrigin] = useState<google.maps.LatLngLiteral | null>(null);
-    const [destination, setDestination] = useState<google.maps.LatLngLiteral | null>(null);
-    const [destinationKey, setDestinationKey] = useState<number>(0);
-    const [waypointsInputs, setWaypointsInputs] = useState<{ id: number; location: google.maps.LatLngLiteral | null }[]>([]);
+    const [originAddress, setOriginAddress] = useState<string>("Localisation en cours...");
+    const [steps, setSteps] = useState<{ id: string; location: google.maps.LatLngLiteral; name: string }[]>([]);
     const [showRoute, setShowRoute] = useState(false);
+    const [mapKey, setMapKey] = useState<string>(crypto.randomUUID());
     const [map, setMap] = useState<google.maps.Map | null>(null);
-    const [userAddress, setUserAddress] = useState<string>("Chargement...");
     const [travelTime, setTravelTime] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!isLoaded || !window.google) return;
+
         navigator.geolocation.getCurrentPosition((position) => {
             const userLocation = {
                 lat: position.coords.latitude,
@@ -24,101 +34,116 @@ export default function Home() {
             };
             setOrigin(userLocation);
 
-            // Obtenir l'adresse de la position actuelle
-            fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${userLocation.lng}&lat=${userLocation.lat}`)
-                .then((res) => res.json())
-                .then((data) => {
-                    if (data.features.length > 0) {
-                        setUserAddress(data.features[0].properties.label);
+            // 🔹 Vérifier si Geocoder est disponible avant de l'utiliser
+            if (google.maps.Geocoder) {
+                const geocoder = new google.maps.Geocoder();
+                geocoder.geocode({ location: userLocation }, (results, status) => {
+                    if (status === "OK" && results && results.length > 0) {
+                        setOriginAddress(results[0].formatted_address);
+                    } else {
+                        setOriginAddress("Adresse inconnue");
                     }
                 });
+            } else {
+                setOriginAddress("Impossible de récupérer l'adresse.");
+            }
         });
-    }, []);
+    }, [isLoaded]);
 
-    // Ajouter une nouvelle étape intermédiaire
-    const addWaypoint = () => {
-        setWaypointsInputs([...waypointsInputs, { id: Date.now(), location: null }]);
+    // 🔹 Ajouter une nouvelle adresse lorsqu'on appuie sur Entrée
+    const addStep = (location: google.maps.LatLngLiteral, name: string) => {
+        setSteps((prevSteps) => [...prevSteps, { id: crypto.randomUUID(), location, name }]);
         setShowRoute(false);
+        reloadMap();
     };
 
-    // Mettre à jour un waypoint lorsqu'une adresse est sélectionnée
-    const updateWaypoint = (id: number, location: google.maps.LatLngLiteral | null) => {
-        setWaypointsInputs((prevWaypoints) =>
-            prevWaypoints.map((waypoint) =>
-                waypoint.id === id ? { ...waypoint, location } : waypoint
-            )
-        );
+    // 🔹 Supprimer une étape
+    const removeStep = (id: string) => {
+        setSteps((prevSteps) => prevSteps.filter((step) => step.id !== id));
         setShowRoute(false);
+        reloadMap();
     };
 
-    // Réinitialiser tous les champs et la carte
+    // 🔹 Réorganiser les étapes
+    const onDragEnd = (event: any) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = steps.findIndex((step) => step.id === active.id);
+        const newIndex = steps.findIndex((step) => step.id === over.id);
+
+        setSteps((prevSteps) => arrayMove(prevSteps, oldIndex, newIndex));
+        setShowRoute(false);
+        reloadMap();
+    };
+
+    // 🔹 Réinitialiser tout
     const resetRoute = () => {
-        setDestination(null);
-        setDestinationKey((prevKey) => prevKey + 1); // 🔹 Change la clé de destination pour reset l'input
-        setWaypointsInputs([]);
+        setSteps([]);
         setShowRoute(false);
         setTravelTime(null);
+        reloadMap();
     };
+
+    // 🔹 Recharger la carte
+    const reloadMap = () => {
+        setMapKey(crypto.randomUUID());
+    };
+
+    if (!isLoaded) {
+        return <p>Chargement de Google Maps...</p>; // 🔹 Empêcher l'affichage si l'API n'est pas prête
+    }
 
     return (
         <MapProvider>
             <div className="flex flex-col items-center gap-4 p-4">
-                <p className="font-bold">Départ : {userAddress}</p>
+                <p className="font-bold">
+                    Départ : {originAddress}
+                </p>
 
-                <SearchBox key={destinationKey} onSelect={(location) => setDestination(location)} />
+                {/* 🔹 Input pour ajouter une adresse */}
+                <SearchBox onSelect={(location, name) => addStep(location, name)} />
 
-                {/* Inputs pour les étapes intermédiaires */}
-                {waypointsInputs.map((waypoint, index) => (
-                    <SearchBox
-                        key={waypoint.id}
-                        onSelect={(location) => updateWaypoint(waypoint.id, location)}
-                    />
-                ))}
+                {/* 🔹 Liste des étapes avec Drag & Drop */}
+                <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                    <SortableContext items={steps.map((step) => step.id)} strategy={verticalListSortingStrategy}>
+                        <ul className="w-full p-4 rounded-lg">
+                            {steps.map((step) => (
+                                <SortableItem key={step.id} id={step.id} name={step.name} onRemove={() => removeStep(step.id)} />
+                            ))}
+                        </ul>
+                    </SortableContext>
+                </DndContext>
 
                 <div className="flex gap-4">
-                    {/* Bouton pour ajouter une nouvelle étape */}
-                    <button
-                        className="p-2 bg-green-500 text-white rounded"
-                        onClick={addWaypoint}
-                    >
-                        Ajouter une étape
-                    </button>
-
-                    {/* Bouton pour afficher l'itinéraire */}
                     <button
                         className="p-2 bg-blue-500 text-white rounded"
                         onClick={() => setShowRoute(true)}
-                        disabled={!destination}
+                        disabled={steps.length < 1} // 🔹 Activation dès qu'il y a une destination
                     >
                         Afficher l'itinéraire
                     </button>
 
-                    {/* Bouton pour réinitialiser */}
-                    <button
-                        className="p-2 bg-red-500 text-white rounded"
-                        onClick={resetRoute}
-                    >
+                    <button className="p-2 bg-red-500 text-white rounded" onClick={resetRoute}>
                         Réinitialiser
                     </button>
                 </div>
 
-                {/* Affichage du temps de trajet */}
                 {travelTime && <p className="text-lg font-semibold mt-2">Temps estimé : {travelTime}</p>}
 
                 <Map
+                    key={mapKey}
                     origin={origin}
-                    destination={destination}
-                    waypoints={waypointsInputs.map(w => w.location).filter(Boolean) as google.maps.DirectionsWaypoint[]}
+                    destination={steps.length > 0 ? steps[steps.length - 1].location : null}
+                    waypoints={steps.slice(0, -1).map((s) => ({ location: s.location, stopover: true }))}
                     onMapLoad={setMap}
                 />
 
-                {showRoute && (
+                {showRoute && steps.length > 0 && (
                     <RoutePlanner
                         origin={origin}
-                        destination={destination}
-                        waypoints={waypointsInputs
-                            .map((w) => (w.location ? { location: w.location, stopover: true } : null))
-                            .filter(Boolean) as google.maps.DirectionsWaypoint[]}
+                        destination={steps[steps.length - 1].location}
+                        waypoints={steps.slice(0, -1).map((s) => ({ location: s.location, stopover: true }))}
                         map={map}
                         onDurationUpdate={setTravelTime}
                     />
