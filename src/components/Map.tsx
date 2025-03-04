@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { GoogleMap } from "@react-google-maps/api";
+import {useContext, useEffect, useRef, useState} from "react";
+import { WebSocketContext } from "@/providers/WebsocketProvider";
+import {GoogleMap, Marker} from "@react-google-maps/api";
 
 const mapContainerStyle = { width: "100%", height: "70vh" };
 const defaultMapOptions = {
@@ -18,6 +19,7 @@ interface MapProps {
 }
 
 const Map = ({ origin, destination, waypoints = [], onMapLoad }: MapProps) => {
+    const { positions, activeRoutes } = useContext(WebSocketContext);
     const [map, setMap] = useState<google.maps.Map | null>(null);
     const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]); // 🔹 Stocke les marqueurs sans déclencher de re-rendu
 
@@ -26,11 +28,10 @@ const Map = ({ origin, destination, waypoints = [], onMapLoad }: MapProps) => {
 
         const { AdvancedMarkerElement } = window.google.maps.marker;
 
-        // 🔹 Supprimer les anciens marqueurs sans setState pour éviter la boucle infinie
         markersRef.current.forEach((marker) => {
             marker.map = null;
         });
-        markersRef.current = []; // 🔹 Réinitialise la liste sans déclencher un re-render
+        markersRef.current = [];
 
         if (origin) {
             const originMarker = new AdvancedMarkerElement({ position: origin, map, title: "Départ" });
@@ -49,19 +50,35 @@ const Map = ({ origin, destination, waypoints = [], onMapLoad }: MapProps) => {
             markersRef.current.push(waypointMarker);
         });
 
-    }, [map, origin, destination, waypoints]); // ✅ Ne met pas `markers` comme dépendance pour éviter la boucle infinie
+    }, [map, origin, destination, waypoints]);
 
     return (
-        <GoogleMap
-            mapContainerStyle={mapContainerStyle}
-            center={origin || { lat: 48.8566, lng: 2.3522 }}
-            zoom={origin ? 14 : 12}
-            options={defaultMapOptions}
-            onLoad={(loadedMap) => {
-                setMap(loadedMap);
-                onMapLoad(loadedMap);
-            }}
-        />
+        <>
+            <GoogleMap
+                mapContainerStyle={mapContainerStyle}
+                center={origin || {lat: 48.8566, lng: 2.3522}}
+                zoom={origin ? 14 : 12}
+                options={defaultMapOptions}
+                onLoad={(loadedMap) => {
+                    setMap(loadedMap);
+                    onMapLoad(loadedMap);
+                }}
+            >
+                {origin && <Marker position={origin} label="D" />}
+                {destination && <Marker position={destination} label="A" />}
+                {waypoints.map((wp, index) => (
+                    <Marker key={index} position={wp.location} label={`${index + 1}`} />
+                ))}
+                {positions.map((pos, index) => (
+                    <Marker key={index} position={pos} label={`U${index + 1}`} />
+                ))}
+                {activeRoutes.map((route, index) =>
+                    route.steps.map((step, stepIndex) => (
+                        <Marker key={`${index}-${stepIndex}`} position={step} label={`R${index + 1}`} />
+                    ))
+                )}
+            </GoogleMap>
+        </>
     );
 };
 

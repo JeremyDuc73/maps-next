@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useContext} from "react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
@@ -9,6 +9,7 @@ import { Map } from "@/components/Map";
 import { SearchBox } from "@/components/SearchBox";
 import { RoutePlanner } from "@/components/RoutePlanner";
 import SortableItem from "@/components/SortableItem";
+import {WebSocketContext} from "@/providers/WebsocketProvider";
 
 export default function Home() {
     const { isLoaded } = useJsApiLoader({
@@ -16,6 +17,7 @@ export default function Home() {
         libraries: ["places", "marker"],
     });
 
+    const { userCount, positions, activeRoutes, sendRoute } = useContext(WebSocketContext);
     const [origin, setOrigin] = useState<google.maps.LatLngLiteral | null>(null);
     const [originAddress, setOriginAddress] = useState<string>("Localisation en cours...");
     const [steps, setSteps] = useState<{ id: string; location: google.maps.LatLngLiteral; name: string }[]>([]);
@@ -94,6 +96,13 @@ export default function Home() {
         return <p>Chargement de Google Maps...</p>; // 🔹 Empêcher l'affichage si l'API n'est pas prête
     }
 
+    const handleShowRoute = () => {
+        if (steps.length > 0) {
+            setShowRoute(true);
+            sendRoute(steps.map((s) => s.location)); // Partager l'itinéraire avec les autres utilisateurs
+        }
+    };
+
     return (
         <MapProvider>
             <div className="flex flex-col items-center gap-4 p-4">
@@ -101,15 +110,20 @@ export default function Home() {
                     Départ : {originAddress}
                 </p>
 
+                <span className="text-white">
+                    Nombre d'utilisateurs : {userCount}
+                </span>
+
                 {/* 🔹 Input pour ajouter une adresse */}
-                <SearchBox onSelect={(location, name) => addStep(location, name)} />
+                <SearchBox onSelect={(location, name) => addStep(location, name)}/>
 
                 {/* 🔹 Liste des étapes avec Drag & Drop */}
                 <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                     <SortableContext items={steps.map((step) => step.id)} strategy={verticalListSortingStrategy}>
                         <ul className="w-full p-4 rounded-lg">
                             {steps.map((step) => (
-                                <SortableItem key={step.id} id={step.id} name={step.name} onRemove={() => removeStep(step.id)} />
+                                <SortableItem key={step.id} id={step.id} name={step.name}
+                                              onRemove={() => removeStep(step.id)}/>
                             ))}
                         </ul>
                     </SortableContext>
@@ -118,7 +132,7 @@ export default function Home() {
                 <div className="flex gap-4">
                     <button
                         className="p-2 bg-blue-500 text-white rounded"
-                        onClick={() => setShowRoute(true)}
+                        onClick={handleShowRoute}
                         disabled={steps.length < 1}
                     >
                         Afficher l'itinéraire
@@ -131,11 +145,22 @@ export default function Home() {
 
                 {travelTime && <p className="text-lg font-semibold mt-2">Temps estimé : {travelTime}</p>}
 
+                {activeRoutes.map((route, index) => (
+                    <div key={index} className="border p-2 rounded bg-gray-800 text-white">
+                        <p>Itinéraire partagé par l'utilisateur {index + 1} :</p>
+                        <ul>
+                            {route.steps.map((step, stepIndex) => (
+                                <li key={stepIndex}>Étape {stepIndex + 1} : {step.lat}, {step.lng}</li>
+                            ))}
+                        </ul>
+                    </div>
+                ))}
+
                 <Map
                     key={mapKey}
                     origin={origin}
                     destination={steps.length > 0 ? steps[steps.length - 1].location : null}
-                    waypoints={steps.slice(0, -1).map((s) => ({ location: s.location, stopover: true }))}
+                    waypoints={steps.slice(0, -1).map((s) => ({location: s.location, stopover: true}))}
                     onMapLoad={setMap}
                 />
 
@@ -143,7 +168,7 @@ export default function Home() {
                     <RoutePlanner
                         origin={origin}
                         destination={steps[steps.length - 1].location}
-                        waypoints={steps.slice(0, -1).map((s) => ({ location: s.location, stopover: true }))}
+                        waypoints={steps.slice(0, -1).map((s) => ({location: s.location, stopover: true}))}
                         map={map}
                         onDurationUpdate={setTravelTime}
                     />
