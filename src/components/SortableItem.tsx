@@ -26,7 +26,18 @@ export default function SortableItem({ id, name, onRemove }: SortableItemProps) 
             className="flex justify-between items-center p-2 bg-white text-black shadow-md rounded mb-2 cursor-grab"
         >
             <span>{name}</span>
-            <button onClick={onRemove} className="text-red-500">❌</button>
+            <button
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onRemove();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="text-red-500"
+            >
+                ❌
+            </button>
         </li>
     );
 }

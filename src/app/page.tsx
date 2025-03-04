@@ -119,7 +119,7 @@ export default function Home() {
                     <button
                         className="p-2 bg-blue-500 text-white rounded"
                         onClick={() => setShowRoute(true)}
-                        disabled={steps.length < 1} // 🔹 Activation dès qu'il y a une destination
+                        disabled={steps.length < 1}
                     >
                         Afficher l'itinéraire
                     </button>
