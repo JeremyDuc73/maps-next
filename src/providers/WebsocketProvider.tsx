@@ -25,7 +25,7 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
     const [activeRoutes, setActiveRoutes] = useState<Array<{ userId: string, steps: Array<{ lat: number; lng: number }> }>>([]);
 
     useEffect(() => {
-        const newSocket = io(":45009");
+        const newSocket = io("https://websocket-maps.jeremyduc.com");
         setSocket(newSocket);
 
         newSocket.on("initialData", (data) => {
