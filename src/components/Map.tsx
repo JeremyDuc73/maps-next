@@ -66,9 +66,10 @@ const Map = ({ origin, destination, waypoints = [], onMapLoad }: MapProps) => {
             >
                 {origin && <Marker position={origin} label="D" />}
                 {destination && <Marker position={destination} label="A" />}
-                {waypoints.map((wp, index) => (
-                    <Marker key={index} position={wp.location} label={`${index + 1}`} />
-                ))}
+                {waypoints.map((wp, index) => {
+                    const position = wp.location as google.maps.LatLngLiteral | undefined;
+                    return position ? <Marker key={index} position={position} label={`${index + 1}`} /> : null;
+                })}
                 {positions.map((pos, index) => (
                     <Marker key={index} position={pos} label={`U${index + 1}`} />
                 ))}

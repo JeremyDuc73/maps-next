@@ -10,6 +10,7 @@ import { SearchBox } from "@/components/SearchBox";
 import { RoutePlanner } from "@/components/RoutePlanner";
 import SortableItem from "@/components/SortableItem";
 import {WebSocketContext} from "@/providers/WebsocketProvider";
+import type {DragEndEvent} from "@dnd-kit/core/dist/types";
 
 export default function Home() {
     const { isLoaded } = useJsApiLoader({
@@ -17,7 +18,7 @@ export default function Home() {
         libraries: ["places", "marker"],
     });
 
-    const { userCount, positions, activeRoutes, sendRoute } = useContext(WebSocketContext);
+    const { userCount, activeRoutes, sendRoute } = useContext(WebSocketContext);
     const [origin, setOrigin] = useState<google.maps.LatLngLiteral | null>(null);
     const [originAddress, setOriginAddress] = useState<string>("Localisation en cours...");
     const [steps, setSteps] = useState<{ id: string; location: google.maps.LatLngLiteral; name: string }[]>([]);
@@ -67,7 +68,8 @@ export default function Home() {
     };
 
     // 🔹 Réorganiser les étapes
-    const onDragEnd = (event: any) => {
+
+    const onDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || active.id === over.id) return;
 
@@ -111,7 +113,7 @@ export default function Home() {
                 </p>
 
                 <span className="text-white">
-                    Nombre d'utilisateurs : {userCount}
+                    Nombre d&apos;utilisateurs : {userCount}
                 </span>
 
                 {/* 🔹 Input pour ajouter une adresse */}
@@ -135,7 +137,7 @@ export default function Home() {
                         onClick={handleShowRoute}
                         disabled={steps.length < 1}
                     >
-                        Afficher l'itinéraire
+                        Afficher l&apos;itinéraire
                     </button>
 
                     <button className="p-2 bg-red-500 text-white rounded" onClick={resetRoute}>
@@ -147,7 +149,7 @@ export default function Home() {
 
                 {activeRoutes.map((route, index) => (
                     <div key={index} className="border p-2 rounded bg-gray-800 text-white">
-                        <p>Itinéraire partagé par l'utilisateur {index + 1} :</p>
+                        <p>Itinéraire partagé par l&apos;utilisateur {index + 1} :</p>
                         <ul>
                             {route.steps.map((step, stepIndex) => (
                                 <li key={stepIndex}>Étape {stepIndex + 1} : {step.lat}, {step.lng}</li>

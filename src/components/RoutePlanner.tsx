@@ -11,7 +11,7 @@ interface RoutePlannerProps {
 }
 
 const RoutePlanner = ({ origin, destination, waypoints, map, onDurationUpdate }: RoutePlannerProps) => {
-    const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+    const [, setDirections] = useState<google.maps.DirectionsResult | null>(null);
     const [renderer, setRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
 
     useEffect(() => {
