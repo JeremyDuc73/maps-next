@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Maps tah les fous",
+  title: "Maps Jérémy",
   description: "GOAT",
 };
 
